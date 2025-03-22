@@ -15,11 +15,11 @@ import (
 
 // ChatClient handles DH key exchange and encrypted communication with server
 type ChatClient struct {
-	dhKey        *crypto.DHKey
-	conn         net.Conn
-	sharedSecret []byte
-	username     string
-	// token           string
+	dhKey           *crypto.DHKey
+	conn            net.Conn
+	sharedSecret    []byte
+	username        string
+	token           string
 	sequenceCounter int64
 }
 

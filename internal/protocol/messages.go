@@ -3,25 +3,25 @@ package protocol
 // Protocol constants for client-server communication
 const (
 	// Commands
-	CmdRegister      = "REGISTER"
-	CmdLogin         = "LOGIN"
-	CmdRequestToken  = "REQUEST_TOKEN"
-	
+	CmdRegister     = "REGISTER"
+	CmdLogin        = "LOGIN"
+	CmdRequestToken = "REQUEST_TOKEN"
+
 	// Responses
-	RespRegistered      = "REGISTERED"
-	RespAuthenticated   = "AUTHENTICATED"
-	RespToken           = "TOKEN"
-	RespValidationCode  = "VALIDATION_CODE"
-	RespError           = "ERROR"
-	
+	RespRegistered     = "REGISTERED"
+	RespAuthenticated  = "AUTHENTICATED"
+	RespToken          = "TOKEN"
+	RespValidationCode = "VALIDATION_CODE"
+	RespError          = "ERROR"
+
 	// Error types
-	ErrInvalidRequest      = "INVALID_REQUEST"
-	ErrInvalidRegister     = "INVALID_REGISTER"
-	ErrInvalidLogin        = "INVALID_LOGIN"
-	ErrInvalidToken        = "INVALID_TOKEN"
-	ErrInvalidCredentials  = "INVALID_CREDENTIALS"
-	ErrServerError         = "SERVER_ERROR"
-	ErrUnknownCommand      = "UNKNOWN_COMMAND"
+	ErrInvalidRequest     = "INVALID_REQUEST"
+	ErrInvalidRegister    = "INVALID_REGISTER"
+	ErrInvalidLogin       = "INVALID_LOGIN"
+	ErrInvalidToken       = "INVALID_TOKEN"
+	ErrInvalidCredentials = "INVALID_CREDENTIALS"
+	ErrServerError        = "SERVER_ERROR"
+	ErrUnknownCommand     = "UNKNOWN_COMMAND"
 )
 
 // FormatRegisterRequest formats a registration request

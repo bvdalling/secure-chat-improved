@@ -49,7 +49,7 @@ func NewServer(port string) (*ChatServer, error) {
 	}
 
 	// Start listening with TLS
-	listener, err := tls.Listen("tcp", "0.0.0.0:8080", tlsConfig)
+	listener, err := tls.Listen("tcp", ":"+port, tlsConfig)
 	if err != nil {
 		db.Close()
 		return nil, err
@@ -100,8 +100,6 @@ func (s *ChatServer) Run() {
 // handleClient manages authentication, DH key exchange, and communication with a client
 func (s *ChatServer) handleClient(conn net.Conn) {
 	defer conn.Close()
-
-	print("")
 
 	// First, handle authentication
 	buffer := make([]byte, 4096)

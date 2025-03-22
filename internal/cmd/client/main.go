@@ -39,6 +39,8 @@ func main() {
 	}
 
 	fmt.Println("Connecting to secure chat server at", serverAddr)
+	fmt.Println("Using TLS and message authentication")
+
 	client, err := chat.NewClient(serverAddr)
 	if err != nil {
 		fmt.Println("Error connecting to server:", err)
@@ -117,7 +119,7 @@ func main() {
 		}
 
 		fmt.Println("Login successful!")
-		fmt.Println("Establishing secure connection...")
+		fmt.Println("Establishing secure connection (DH over TLS with message authentication)...")
 
 		err = client.Connect()
 		if err != nil {
@@ -127,6 +129,7 @@ func main() {
 
 		fmt.Println("Secure connection established!")
 		fmt.Println("Type messages and press Enter to send.")
+		fmt.Println("All messages are now authenticated and encrypted with multiple layers of security.")
 
 		// Start receiving messages in a goroutine
 		go client.ReceiveMessages()
