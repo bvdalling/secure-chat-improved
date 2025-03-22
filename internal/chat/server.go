@@ -1,14 +1,12 @@
 package chat
 
 import (
-	"crypto/tls"
 	"encoding/hex"
 	"fmt"
 	"math/big"
 	"net"
 	"strings"
 	"sync"
-	"sync/atomic"
 
 	"securechat/internal/auth"
 	"securechat/internal/crypto"
@@ -18,13 +16,12 @@ import (
 
 // ChatServer manages DH key exchange and encrypted communication
 type ChatServer struct {
-	dhKey            *crypto.DHKey
-	connections      map[net.Conn]string // map connection to username
-	sharedSecrets    map[net.Conn][]byte
-	database         *database.Database
-	listener         net.Listener
-	mutex            sync.Mutex
-	sequenceCounters map[string]*int64 // Track message sequence IDs by username
+	dhKey         *crypto.DHKey
+	connections   map[net.Conn]string // map connection to username
+	sharedSecrets map[net.Conn][]byte
+	database      *database.Database
+	listener      net.Listener
+	mutex         sync.Mutex
 }
 
 // NewServer creates a new chat server with DH capabilities
@@ -41,48 +38,25 @@ func NewServer(port string) (*ChatServer, error) {
 		return nil, err
 	}
 
-	// Create TLS configuration
-	tlsConfig, err := crypto.CreateTLSConfig()
-	if err != nil {
-		db.Close()
-		return nil, fmt.Errorf("failed to create TLS config: %v", err)
-	}
-
-	// Start listening with TLS
-	listener, err := tls.Listen("tcp", ":"+port, tlsConfig)
+	// Start listening
+	listener, err := net.Listen("tcp", ":"+port)
 	if err != nil {
 		db.Close()
 		return nil, err
 	}
 
 	return &ChatServer{
-		dhKey:            dhKey,
-		connections:      make(map[net.Conn]string),
-		sharedSecrets:    make(map[net.Conn][]byte),
-		database:         db,
-		listener:         listener,
-		sequenceCounters: make(map[string]*int64),
+		dhKey:         dhKey,
+		connections:   make(map[net.Conn]string),
+		sharedSecrets: make(map[net.Conn][]byte),
+		database:      db,
+		listener:      listener,
 	}, nil
-}
-
-// getNextSequenceID gets the next sequence ID for a given username
-func (s *ChatServer) getNextSequenceID(username string) int64 {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	counter, exists := s.sequenceCounters[username]
-	if !exists {
-		counter = new(int64)
-		s.sequenceCounters[username] = counter
-	}
-
-	return atomic.AddInt64(counter, 1)
 }
 
 // Run starts the chat server
 func (s *ChatServer) Run() {
-	fmt.Println("Secure chat server started on", s.listener.Addr())
-	fmt.Println("TLS enabled with certificate:", crypto.GetCertificatePath())
+	fmt.Println("Chat server started on", s.listener.Addr())
 	fmt.Println("Server public DH key:", hex.EncodeToString(s.dhKey.Public.Bytes()))
 
 	for {
@@ -269,29 +243,9 @@ func (s *ChatServer) handleClient(conn net.Conn) {
 				return
 			}
 
-			// Parse authenticated message
-			authMsgStr := string(buffer[:n])
-			authMsg, err := crypto.DeserializeAuthenticatedMessage(authMsgStr)
-			if err != nil {
-				fmt.Println("Message parsing error:", err)
-				continue
-			}
-
-			// Verify message integrity
-			isValid, err := authMsg.Verify(sharedSecret)
-			if err != nil || !isValid {
-				fmt.Println("Message authentication failed, potential tampering detected")
-				continue
-			}
-
-			// Check for replay attack
-			if authMsg.IsExpired(60) { // 60 seconds expiry
-				fmt.Println("Expired message received, potential replay attack")
-				continue
-			}
-
-			// Decrypt the payload
-			plaintext, err := crypto.DecryptMessage(sharedSecret, authMsg.Payload)
+			// Decrypt the message
+			encryptedMsg := string(buffer[:n])
+			plaintext, err := crypto.DecryptMessage(sharedSecret, encryptedMsg)
 			if err != nil {
 				fmt.Println("Decryption error:", err)
 				continue
@@ -328,71 +282,35 @@ func (s *ChatServer) handleClient(conn net.Conn) {
 
 // broadcastMessage sends an encrypted message to all clients except the sender
 func (s *ChatServer) broadcastMessage(sender net.Conn, username string, message string) {
+	formatted := fmt.Sprintf("[%s]: %s", username, message)
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	for conn, receiverName := range s.connections {
+	for conn, secret := range s.sharedSecrets {
 		if conn != sender {
-			secret := s.sharedSecrets[conn]
-
-			// Encrypt the message
-			encryptedMsg, err := crypto.EncryptMessage(secret, message)
+			encryptedMsg, err := crypto.EncryptMessage(secret, formatted)
 			if err != nil {
 				fmt.Println("Encryption error:", err)
 				continue
 			}
-
-			// Create authenticated message
-			sequenceID := s.getNextSequenceID(receiverName)
-			authMsg, err := crypto.NewAuthenticatedMessage(encryptedMsg, username, sequenceID, secret)
-			if err != nil {
-				fmt.Println("Failed to create authenticated message:", err)
-				continue
-			}
-
-			// Serialize and send
-			serialized, err := authMsg.Serialize()
-			if err != nil {
-				fmt.Println("Failed to serialize message:", err)
-				continue
-			}
-
-			conn.Write([]byte(serialized))
+			conn.Write([]byte(encryptedMsg))
 		}
 	}
 }
 
 // broadcastServerMessage sends a server message to all connected clients
 func (s *ChatServer) broadcastServerMessage(message string) {
+	formatted := fmt.Sprintf("[SERVER]: %s", message)
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	for conn, username := range s.connections {
-		secret := s.sharedSecrets[conn]
-
-		// Encrypt the message
-		encryptedMsg, err := crypto.EncryptMessage(secret, message)
+	for conn, secret := range s.sharedSecrets {
+		encryptedMsg, err := crypto.EncryptMessage(secret, formatted)
 		if err != nil {
 			fmt.Println("Encryption error:", err)
 			continue
 		}
-
-		// Create authenticated message
-		sequenceID := s.getNextSequenceID(username)
-		authMsg, err := crypto.NewAuthenticatedMessage(encryptedMsg, "SERVER", sequenceID, secret)
-		if err != nil {
-			fmt.Println("Failed to create authenticated message:", err)
-			continue
-		}
-
-		// Serialize and send
-		serialized, err := authMsg.Serialize()
-		if err != nil {
-			fmt.Println("Failed to serialize message:", err)
-			continue
-		}
-
-		conn.Write([]byte(serialized))
+		conn.Write([]byte(encryptedMsg))
 	}
 }
 
@@ -409,7 +327,6 @@ func (s *ChatServer) Close() error {
 	// Clear maps
 	s.connections = make(map[net.Conn]string)
 	s.sharedSecrets = make(map[net.Conn][]byte)
-	s.sequenceCounters = make(map[string]*int64)
 
 	// Close database
 	if err := s.database.Close(); err != nil {

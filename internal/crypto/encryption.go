@@ -16,7 +16,7 @@ func EncryptMessage(key []byte, plaintext string) (string, error) {
 		return "", err
 	}
 
-	// Never use the same nonce more than once with the same key
+	// Generate a random nonce
 	nonce := make([]byte, 12)
 	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
 		return "", err
@@ -27,8 +27,10 @@ func EncryptMessage(key []byte, plaintext string) (string, error) {
 		return "", err
 	}
 
-	// Encrypt and append nonce
+	// Encrypt the plaintext
 	ciphertext := aesGCM.Seal(nil, nonce, []byte(plaintext), nil)
+
+	// Combine nonce and ciphertext
 	result := append(nonce, ciphertext...)
 
 	// Base64 encode for transmission
@@ -54,11 +56,11 @@ func DecryptMessage(key []byte, ciphertext string) (string, error) {
 
 	// Split nonce and ciphertext
 	if len(data) < 12 {
-		return "", fmt.Errorf("ciphertext too short")
+		return "", fmt.Errorf("ciphertext too short or tampered")
 	}
 	nonce, encryptedMsg := data[:12], data[12:]
 
-	// Decrypt
+	// Decrypt the message
 	plaintext, err := aesGCM.Open(nil, nonce, encryptedMsg, nil)
 	if err != nil {
 		return "", err
@@ -74,7 +76,7 @@ func EncryptData(data []byte, key []byte) []byte {
 		panic(err)
 	}
 
-	// Never use the same nonce more than once with the same key
+	// Generate a random nonce
 	nonce := make([]byte, 12)
 	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
 		panic(err)

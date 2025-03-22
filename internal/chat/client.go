@@ -1,13 +1,11 @@
 package chat
 
 import (
-	"crypto/tls"
 	"fmt"
 	"math/big"
 	"net"
 	"os"
 	"strings"
-	"sync/atomic"
 
 	"securechat/internal/crypto"
 	"securechat/internal/protocol"
@@ -15,12 +13,11 @@ import (
 
 // ChatClient handles DH key exchange and encrypted communication with server
 type ChatClient struct {
-	dhKey           *crypto.DHKey
-	conn            net.Conn
-	sharedSecret    []byte
-	username        string
-	token           string
-	sequenceCounter int64
+	dhKey        *crypto.DHKey
+	conn         net.Conn
+	sharedSecret []byte
+	username     string
+	token        string
 }
 
 // NewClient creates a new chat client with DH capabilities
@@ -31,11 +28,8 @@ func NewClient(serverAddr string) (*ChatClient, error) {
 		return nil, err
 	}
 
-	// Create TLS configuration
-	tlsConfig := crypto.CreateClientTLSConfig(true) // Skip verification for self-signed certs
-
-	// Connect to server with TLS
-	conn, err := tls.Dial("tcp", serverAddr, tlsConfig)
+	// Connect to server
+	conn, err := net.Dial("tcp", serverAddr)
 	if err != nil {
 		return nil, err
 	}
@@ -156,39 +150,20 @@ func (c *ChatClient) Connect() error {
 	return nil
 }
 
-// getNextSequenceID atomically increments and returns the sequence counter
-func (c *ChatClient) getNextSequenceID() int64 {
-	return atomic.AddInt64(&c.sequenceCounter, 1)
-}
-
 // SendMessage encrypts and sends a message to the server
 func (c *ChatClient) SendMessage(message string) error {
-	// Encrypt the message
 	encryptedMsg, err := crypto.EncryptMessage(c.sharedSecret, message)
 	if err != nil {
 		return err
 	}
 
-	// Create authenticated message
-	sequenceID := c.getNextSequenceID()
-	authMsg, err := crypto.NewAuthenticatedMessage(encryptedMsg, c.username, sequenceID, c.sharedSecret)
-	if err != nil {
-		return fmt.Errorf("failed to create authenticated message: %v", err)
-	}
-
-	// Serialize and send
-	serialized, err := authMsg.Serialize()
-	if err != nil {
-		return fmt.Errorf("failed to serialize message: %v", err)
-	}
-
-	_, err = c.conn.Write([]byte(serialized))
+	_, err = c.conn.Write([]byte(encryptedMsg))
 	return err
 }
 
 // ReceiveMessages continuously receives and decrypts messages from the server
 func (c *ChatClient) ReceiveMessages() {
-	buffer := make([]byte, 8192) // Increased buffer size for authenticated messages
+	buffer := make([]byte, 4096)
 	for {
 		n, err := c.conn.Read(buffer)
 		if err != nil {
@@ -196,51 +171,18 @@ func (c *ChatClient) ReceiveMessages() {
 			os.Exit(1)
 		}
 
-		// Parse authenticated message
-		authMsgStr := string(buffer[:n])
-		authMsg, err := crypto.DeserializeAuthenticatedMessage(authMsgStr)
-		if err != nil {
-			fmt.Println("Message parsing error:", err)
-			continue
-		}
-
-		// Verify message authenticity
-		isValid, err := authMsg.Verify(c.sharedSecret)
-		if err != nil || !isValid {
-			fmt.Println("Message authentication failed, potential tampering detected")
-			continue
-		}
-
-		// Check for replay attack
-		if authMsg.IsExpired(60) { // 60 seconds expiry
-			fmt.Println("Expired message received, potential replay attack")
-			continue
-		}
-
-		// Decrypt the payload
-		plaintext, err := crypto.DecryptMessage(c.sharedSecret, authMsg.Payload)
+		encryptedMsg := string(buffer[:n])
+		plaintext, err := crypto.DecryptMessage(c.sharedSecret, encryptedMsg)
 		if err != nil {
 			fmt.Println("Decryption error:", err)
 			continue
 		}
 
-		// Format message with sender (if not from ourselves)
-		if authMsg.Sender != c.username {
-			fmt.Printf("[%s]: %s\n", authMsg.Sender, plaintext)
-		} else {
-			fmt.Println(plaintext)
-		}
+		fmt.Println(plaintext)
 	}
 }
 
 // Close closes the connection to the server
 func (c *ChatClient) Close() error {
-	// Zero out sensitive data
-	if c.sharedSecret != nil {
-		for i := range c.sharedSecret {
-			c.sharedSecret[i] = 0
-		}
-	}
-
 	return c.conn.Close()
 }
